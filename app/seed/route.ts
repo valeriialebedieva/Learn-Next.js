@@ -2,9 +2,7 @@ import bcrypt from 'bcrypt';
 import postgres from 'postgres';
 import { invoices, customers, revenue, users } from '../lib/placeholder-data';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
-
-async function seedUsers() {
+async function seedUsers(sql: ReturnType<typeof postgres>) {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
   await sql`
     CREATE TABLE IF NOT EXISTS users (
@@ -29,7 +27,7 @@ async function seedUsers() {
   return insertedUsers;
 }
 
-async function seedInvoices() {
+async function seedInvoices(sql: ReturnType<typeof postgres>) {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
 
   await sql`
@@ -55,7 +53,7 @@ async function seedInvoices() {
   return insertedInvoices;
 }
 
-async function seedCustomers() {
+async function seedCustomers(sql: ReturnType<typeof postgres>) {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
 
   await sql`
@@ -80,7 +78,7 @@ async function seedCustomers() {
   return insertedCustomers;
 }
 
-async function seedRevenue() {
+async function seedRevenue(sql: ReturnType<typeof postgres>) {
   await sql`
     CREATE TABLE IF NOT EXISTS revenue (
       month VARCHAR(4) NOT NULL UNIQUE,
@@ -103,15 +101,133 @@ async function seedRevenue() {
 
 export async function GET() {
   try {
-    const result = await sql.begin((sql) => [
-      seedUsers(),
-      seedCustomers(),
-      seedInvoices(),
-      seedRevenue(),
-    ]);
+    // Check if POSTGRES_URL is set
+    if (!process.env.POSTGRES_URL) {
+      return Response.json(
+        {
+          error: {
+            message:
+              'POSTGRES_URL environment variable is not set. Please set it in your .env file.',
+            code: 'MISSING_ENV_VAR',
+          },
+        },
+        { status: 500 },
+      );
+    }
 
-    return Response.json({ message: 'Database seeded successfully' });
-  } catch (error) {
-    return Response.json({ error }, { status: 500 });
+    // Create database connection
+    // Use SSL only if POSTGRES_URL includes SSL connection string (typically for cloud databases)
+    const useSSL = process.env.POSTGRES_URL.includes('sslmode=require') || 
+                   process.env.POSTGRES_URL.includes('ssl=true') ||
+                   process.env.POSTGRES_URL.includes('amazonaws.com') ||
+                   process.env.POSTGRES_URL.includes('neon.tech') ||
+                   process.env.POSTGRES_URL.includes('vercel-storage.com');
+    
+    let sql: ReturnType<typeof postgres>;
+    try {
+      sql = postgres(process.env.POSTGRES_URL, useSSL ? { ssl: 'require' } : {});
+    } catch (connectionError: any) {
+      return Response.json(
+        {
+          error: {
+            message: 'Failed to create database connection. Please check your POSTGRES_URL.',
+            code: connectionError.code || 'CONNECTION_ERROR',
+            details: connectionError.message,
+          },
+        },
+        { status: 500 },
+      );
+    }
+
+    try {
+      const result = await sql.begin((sql) => [
+        seedUsers(sql),
+        seedCustomers(sql),
+        seedInvoices(sql),
+        seedRevenue(sql),
+      ]);
+
+      // Close the connection
+      await sql.end();
+
+      return Response.json({ message: 'Database seeded successfully' });
+    } catch (dbError: any) {
+      // Close the connection on error
+      await sql.end().catch(() => {});
+
+      // Extract error information
+      const errorCode = dbError?.code || dbError?.errno || '';
+      const errorMessage = dbError?.message || String(dbError) || 'Database error occurred';
+      let errorString = '';
+      try {
+        errorString = JSON.stringify(dbError);
+      } catch {
+        errorString = String(dbError);
+      }
+
+      // Handle specific connection errors
+      if (errorCode === 'ECONNREFUSED' || 
+          errorMessage.includes('ECONNREFUSED') || 
+          errorString.includes('ECONNREFUSED')) {
+        return Response.json(
+          {
+            error: {
+              message:
+                'Unable to connect to the database. Please make sure your database is running and the POSTGRES_URL is correct. Common issues: 1) Database server is not running, 2) Wrong host/port in POSTGRES_URL, 3) Firewall blocking the connection.',
+              code: 'ECONNREFUSED',
+            },
+          },
+          { status: 500 },
+        );
+      }
+
+      // Handle SSL errors
+      if (errorMessage.includes('SSL') || errorCode === '28000' || errorString.includes('SSL')) {
+        return Response.json(
+          {
+            error: {
+              message:
+                'SSL connection error. If you are using a local database, try removing SSL requirements from your connection string.',
+              code: 'SSL_ERROR',
+            },
+          },
+          { status: 500 },
+        );
+      }
+
+      // Handle authentication errors
+      if (errorCode === '28P01' || errorMessage.includes('password') || errorMessage.includes('authentication')) {
+        return Response.json(
+          {
+            error: {
+              message: 'Database authentication failed. Please check your POSTGRES_URL credentials.',
+              code: 'AUTH_ERROR',
+            },
+          },
+          { status: 500 },
+        );
+      }
+
+      // Handle other database errors
+      return Response.json(
+        {
+          error: {
+            message: errorMessage,
+            code: errorCode || 'DATABASE_ERROR',
+          },
+        },
+        { status: 500 },
+      );
+    }
+  } catch (error: any) {
+    return Response.json(
+      {
+        error: {
+          message: error.message || 'An unexpected error occurred',
+          code: error.code || 'UNKNOWN_ERROR',
+        },
+      },
+      { status: 500 },
+    );
   }
 }

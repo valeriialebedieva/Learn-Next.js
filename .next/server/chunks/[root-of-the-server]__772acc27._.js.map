@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 6, "column": 0}, "map": {"version":3,"sources":[],"names":[],"mappings":"","debugId":null}},
+    {"offset": {"line": 52, "column": 0}, "map": {"version":3,"sources":["file:///Users/valeriialebedieva/Downloads/Learn-Next.js-2/app/query/route.ts"],"sourcesContent":["// import postgres from 'postgres';\n\n// const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });\n\n// async function listInvoices() {\n// \tconst data = await sql`\n//     SELECT invoices.amount, customers.name\n//     FROM invoices\n//     JOIN customers ON invoices.customer_id = customers.id\n//     WHERE invoices.amount = 666;\n//   `;\n\n// \treturn data;\n// }\n\nexport async function GET() {\n  return Response.json({\n    message:\n      'Uncomment this file and remove this line. You can delete this file when you are finished.',\n  });\n  // try {\n  // \treturn Response.json(await listInvoices());\n  // } catch (error) {\n  // \treturn Response.json({ error }, { status: 500 });\n  // }\n}\n"],"names":[],"mappings":"AAAA,mCAAmC;AAEnC,uEAAuE;AAEvE,kCAAkC;AAClC,2BAA2B;AAC3B,6CAA6C;AAC7C,oBAAoB;AACpB,4DAA4D;AAC5D,mCAAmC;AACnC,OAAO;AAEP,gBAAgB;AAChB,IAAI;;;;AAEG,eAAe;IACpB,OAAO,SAAS,IAAI,CAAC;QACnB,SACE;IACJ;AACA,QAAQ;AACR,+CAA+C;AAC/C,oBAAoB;AACpB,qDAAqD;AACrD,IAAI;AACN","debugId":null}}]
+}
